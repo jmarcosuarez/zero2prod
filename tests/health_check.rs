@@ -12,7 +12,8 @@ async fn health_check_works() {
     let response = client
         // Use the returned application address
         .get(&format!("{}/health_check", &address))
-        .send().await
+        .send()
+        .await
         .expect("Failed to execute request");
 
     // Assert
