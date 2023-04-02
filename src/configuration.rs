@@ -1,4 +1,5 @@
 use secrecy::{ExposeSecret, Secret};
+use serde_aux::field_attributes::deserialize_number_from_string;
 
 #[derive(serde::Deserialize)]
 pub struct Settings {
@@ -10,6 +11,7 @@ pub struct Settings {
 pub struct DatabaseSettings {
     pub username: String,
     pub password: Secret<String>,
+    #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub host: String,
     pub database_name: String,
@@ -17,6 +19,7 @@ pub struct DatabaseSettings {
 
 #[derive(serde::Deserialize)]
 pub struct ApplicationSettings {
+    #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub host: String,
 }
@@ -65,6 +68,13 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
         .add_source(config::File::from(
             configuration_directory.join(environment_filename),
         ))
+        // Add in settings from environment variables (with a prefix of APP and "_" as separator)
+        // Eg. `APP_APPLICATION_PORT=500` wouls set `Settings.applicaction.port`
+        .add_source(
+            config::Environment::with_prefix("APP")
+                .prefix_separator("_")
+                .separator("__"),
+        )
         .build()?;
 
     // Try to convert the configuration values into our Settings type

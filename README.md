@@ -29,15 +29,9 @@ To see all the logs coming out of a certain test case to debug you can use. Note
 TEST_LOG=true cargo test health_check_works | bunyan
 ```
 
-## Building
+## Build
 
 To build a docker image tagged as "zero2prod" according to the recipe specified in `Dockerfile`
-
-```
-docker build --tag zero2prod --file Dockerfile .
-```
-
-## Build
 
 ```
 docker build --tag zero2prod --file Dockerfile .
