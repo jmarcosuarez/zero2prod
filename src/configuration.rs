@@ -76,7 +76,7 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
             configuration_directory.join(environment_filename),
         ))
         // Add in settings from environment variables (with a prefix of APP and "_" as separator)
-        // Eg. `APP_APPLICATION_PORT=500` wouls set `Settings.applicaction.port`
+        // Eg. `APP_APPLICATION_PORT=500` would set `Settings.application.port`
         .add_source(
             config::Environment::with_prefix("APP")
                 .prefix_separator("_")
