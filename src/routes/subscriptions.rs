@@ -1,3 +1,5 @@
+use crate::domain::{NewSubscriber, SubscriberName};
+
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
 use sqlx::{query, PgPool};
@@ -26,14 +28,23 @@ pub async fn subscribe(
     // Retrieving a connection from the application state
     pool: web::Data<PgPool>,
 ) -> HttpResponse {
-    if !is_valid_name(&form.name) {
-        return HttpResponse::BadRequest().finish();
-    }
+    let name = match SubscriberName::parse(form.0.name) {
+        Ok(name) => name,
+        // Return early if the name is invalid, with a 400
+        Err(_) => return HttpResponse::BadRequest().finish(),
+    };
+
+    // `web::Form` is a wrapper around `FormData`
+    //`form.0` gives us access to the underlying `FormData`
+    let new_subscriber = NewSubscriber {
+        email: form.0.email,
+        name,
+    };
 
     // `Result` has 2 variant: `Ok` and `Err`.
     // The first for successes, the second for failures
     // We use a `match` statement to choose what to do based on the outcome
-    match insert_subscriber(&pool, &form).await {
+    match insert_subscriber(&pool, &new_subscriber).await {
         Ok(_) => HttpResponse::Ok().finish(),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
@@ -41,12 +52,13 @@ pub async fn subscribe(
 
 #[tracing::instrument(
     name = "Saving new subscriber details in the database",
-    skip(form, pool)
+    skip(new_subscriber, pool)
 )]
+
 pub async fn insert_subscriber(
     pool: &PgPool,
     // Retrieving a connection from the application state
-    form: &FormData,
+    new_subscriber: &NewSubscriber,
 ) -> Result<(), sqlx::Error> {
     query!(
         r#"
@@ -54,8 +66,8 @@ pub async fn insert_subscriber(
                     VALUES ($1, $2, $3, $4)
                 "#,
         Uuid::new_v4(),
-        form.email,
-        form.name,
+        new_subscriber.email,
+        new_subscriber.name.as_ref(),
         Utc::now()
     )
     // Using the pool as a replacement for PgConnection
