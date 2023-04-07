@@ -1,4 +1,4 @@
-use crate::domain::{NewSubscriber, SubscriberName};
+use crate::domain::{NewSubscriber, SubscriberEmail, SubscriberName};
 
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
@@ -12,6 +12,25 @@ pub struct FormData {
     name: String,
 }
 
+// NOTE: `TryFrom/TryInto` implementation instead of this!!!
+// pub fn parse_subscriber(form: FormData) -> Result<NewSubscriber, String> {
+//     let name = SubscriberName::parse(form.name)?;
+//     let email = SubscriberEmail::parse(form.email)?;
+//     Ok(NewSubscriber { email, name })
+// }
+
+// The Rust standard lib provides a few traits to deal with conversions
+// By implementing `TryFrom/TryInto` we are just making our intent clear.
+// We are spelling "This is a type conversion"
+impl TryFrom<FormData> for NewSubscriber {
+    type Error = String;
+
+    fn try_from(value: FormData) -> Result<Self, Self::Error> {
+        let name = SubscriberName::parse(value.name)?;
+        let email = SubscriberEmail::parse(value.email)?;
+        Ok(Self { email, name })
+    }
+}
 // Creates a span at the beginning of the function invocation and
 // automatically attaches all instruments passed to the function to
 // the context of the span
@@ -28,17 +47,14 @@ pub async fn subscribe(
     // Retrieving a connection from the application state
     pool: web::Data<PgPool>,
 ) -> HttpResponse {
-    let name = match SubscriberName::parse(form.0.name) {
-        Ok(name) => name,
-        // Return early if the name is invalid, with a 400
+    // We implemented `TryFrom` but we are calling `.try_into()`
+    // `TryFrom implementation  gives you this for free
+    // ` form.0.try_into()` equals `NewSubscriber::try_from(from.0)`
+    // is just a mather of taste really!!
+    let new_subscriber = match form.0.try_into() {
+        Ok(form) => form,
+        // Return early if the email is invalid, with a 400
         Err(_) => return HttpResponse::BadRequest().finish(),
-    };
-
-    // `web::Form` is a wrapper around `FormData`
-    //`form.0` gives us access to the underlying `FormData`
-    let new_subscriber = NewSubscriber {
-        email: form.0.email,
-        name,
     };
 
     // `Result` has 2 variant: `Ok` and `Err`.
@@ -66,7 +82,7 @@ pub async fn insert_subscriber(
                     VALUES ($1, $2, $3, $4)
                 "#,
         Uuid::new_v4(),
-        new_subscriber.email,
+        new_subscriber.email.as_ref(),
         new_subscriber.name.as_ref(),
         Utc::now()
     )
