@@ -21,7 +21,15 @@ async fn main() -> std::io::Result<()> {
         .email_client
         .sender()
         .expect("Invalid sender email address.");
-    let email_client = EmailClient::new(configuration.email_client.base_url, sender_email);
+    let timeout = configuration.email_client.timeout();
+    let email_client = EmailClient::new(
+        configuration.email_client.base_url,
+        sender_email,
+        // Pass argument from configuration
+        configuration.email_client.authorization_token,
+        // Pass new argument from configuration
+        timeout,
+    );
     // We are reading address from Settings
     let address = format!(
         "{}:{}",

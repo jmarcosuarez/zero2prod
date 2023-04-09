@@ -9,3 +9,8 @@ database:
 email_client:
   base_url: "localhost"
   sender_email: "test@gmail.com"
+  # We are only setting the dev value
+  # We will deal with the prod value outside oif version control
+  # Given it is a sensitive secret!
+  authorization_token: "my-secret-token"
+  timeout_milliseconds: 10000
