@@ -28,9 +28,15 @@ static TRACING: Lazy<()> = Lazy::new(|| {
 });
 
 pub struct TestApp {
+    pub port: u16,
     pub address: String,
     pub db_pool: PgPool,
     pub email_server: MockServer,
+}
+// Confirmation links embedded in the request to the email API.
+pub struct ConfirmationLinks {
+    pub html: reqwest::Url,
+    pub plain_text: reqwest::Url,
 }
 
 impl TestApp {
@@ -42,6 +48,33 @@ impl TestApp {
             .send()
             .await
             .expect("Failed to execute request.")
+    }
+    // Extract the confirmation links embedded in the request to the email API
+    pub fn get_confirmation_links(&self, email_request: &wiremock::Request) -> ConfirmationLinks {
+        let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
+
+        // Extract the link from one of the requests fields
+        let get_link = |s: &str| {
+            let links: Vec<_> = linkify::LinkFinder::new()
+                .links(s)
+                .filter(|l| *l.kind() == linkify::LinkKind::Url)
+                .collect();
+
+            assert_eq!(links.len(), 1);
+
+            let raw_link = links[0].as_str().to_owned();
+            let mut confirmation_link = reqwest::Url::parse(&raw_link).unwrap();
+            // Lets make =sure we dont call random API's on the web
+
+            assert_eq!(confirmation_link.host_str().unwrap(), "127.0.0.1");
+            confirmation_link.set_port(Some(self.port)).unwrap();
+            confirmation_link
+        };
+
+        let html = get_link(&body["HtmlBody"].as_str().unwrap());
+        let plain_text = get_link(&body["TextBody"].as_str().unwrap());
+
+        ConfirmationLinks { html, plain_text }
     }
 }
 
@@ -74,14 +107,16 @@ pub async fn spawn_app() -> TestApp {
     let application = Application::build(configuration.clone())
         .await
         .expect("Failed to build application");
+    let application_port = application.port();
     // Get the port before spawning the application
-    let address = format!("http://127.0.0.1:{}", application.port());
+    let address = format!("http://127.0.0.1:{}", application_port);
     // tokio::spawn returns a handle to the spawned future
     // but we have no use for it here, hence the non-binding let
     let _ = tokio::spawn(application.run_until_stopped());
 
     TestApp {
         address,
+        port: application_port,
         db_pool: get_connection_pool(&configuration.database),
         email_server,
     }

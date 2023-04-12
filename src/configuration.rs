@@ -30,6 +30,9 @@ pub struct ApplicationSettings {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub host: String,
+    // The domain and protocol are going to change according to environment
+    // it will be http://127.0.0.1 for our tests and a proper DNS record with HTTPS for prod
+    pub base_url: String,
 }
 
 #[derive(serde::Deserialize, Clone)]
