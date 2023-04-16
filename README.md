@@ -2,6 +2,25 @@
 
 zero to production in rust
 
+### About
+
+Subscription flow with proper confirmation email:
+
+- Every time an user wants to subscribe to our newsletter they fire a POST request to `/subscriptions`. Our request handler will:
+
+1. Add their details to our DB in the `subscriptions` table, with status equal to `pending_confirmation`.
+2. Generate unique `subscription_token`.
+3. Store this `subscription-token` in DB against their id in a `subscription_tokens` table.
+4. Send an email to the new subscriber containing a link structured as `https://<api.domain>/subscriptions/confirm?token=<subscription_token>`.
+5. Return a `200 OK`.
+
+Once they click on the link, a browser tab will open and a new GET request will be fired to out GET `/subscriptions/confirm` endpoint. Our request handlerr will:
+
+1. Retrieve `subscription_token` from query parameters.
+2. Retrieve the `subscriber_id` associated with `subscription_token` from the `subscription_tokens` table.
+3. Update the subscriber status from `pending_confirmation` to `active` in the `subscriptions` table.
+4. Return a `200 Ok`.
+
 ## To start
 
 From root run

@@ -1,7 +1,7 @@
 use crate::domain::{NewSubscriber, SubscriberEmail, SubscriberName};
 use crate::email_client::EmailClient;
 use crate::startup::ApplicationBaseUrl;
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpResponse, ResponseError};
 use chrono::Utc;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -52,12 +52,12 @@ pub async fn subscribe(
     // Get the email_client form the app context
     email_client: web::Data<EmailClient>,
     base_url: web::Data<ApplicationBaseUrl>,
-) -> HttpResponse {
+) -> Result<HttpResponse, actix_web::Error> {
     // transactions got its own API
     // to begin on our pool we acquire a connection from the pool and kick off a transaction
     let mut transaction = match pool.begin().await {
         Ok(transaction) => transaction,
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
     };
     // We implemented `TryFrom` but we are calling `.try_into()`
     // `TryFrom implementation  gives you this for free
@@ -66,23 +66,21 @@ pub async fn subscribe(
     let new_subscriber = match form.0.try_into() {
         Ok(form) => form,
         // Return early if the email is invalid, with a 400
-        Err(_) => return HttpResponse::BadRequest().finish(),
+        Err(_) => return Ok(HttpResponse::BadRequest().finish()),
     };
     let subscriber_id = match insert_subscriber(&mut transaction, &new_subscriber).await {
         Ok(subscriber_id) => subscriber_id,
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
     };
     let subscription_token = generate_subscription_token();
-    if store_token(&mut transaction, subscriber_id, &subscription_token)
-        .await
-        .is_err()
-    {
-        return HttpResponse::InternalServerError().finish();
-    }
-    // Explicitly commit all changes to the Transaction before it oges out of scope.
+    // The `?` operator transparently invokes the `Into` trait
+    // on out behalf - we don't need an explicit `map_err` anymore.
+    // The `Into` trait is important because it will pickup the actix error as wrapped in `store_token` fn
+    store_token(&mut transaction, subscriber_id, &subscription_token).await?;
+    // Explicitly commit all changes to the Transaction before it goes out of scope.
     // Otherwise all changes would be rolled back
     if transaction.commit().await.is_err() {
-        return HttpResponse::InternalServerError().finish();
+        return Ok(HttpResponse::InternalServerError().finish());
     }
 
     if send_confirmation_email(
@@ -94,9 +92,9 @@ pub async fn subscribe(
     .await
     .is_err()
     {
-        return HttpResponse::InternalServerError().finish();
+        return Ok(HttpResponse::InternalServerError().finish());
     }
-    HttpResponse::Ok().finish()
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[tracing::instrument(
@@ -197,6 +195,61 @@ fn generate_subscription_token() -> String {
         .collect()
 }
 
+// We use ResponseError trait to wrap the error into a response
+// then on the store_token call we can then have access to the underlying error
+// instead of discarding it and throwing a 500
+//
+// But reimplementing ResponseError needs Debug and Display traits
+// Debug returns as much information as possible while Display gives us a brief description
+// of the failure.
+// Debug is enough with `#[derive(Debug)]` but Display is not implemented for most types
+// and cannot automatically implemented with `#[derive(Display)]` hence the `impl` block below
+//
+// Now the log error emitted at the end of request processing now contains both an in-depth
+// and brief description of the error that caused the application to return a 500 Internal
+// Server error to the user
+// #[derive(Debug)] // not needed since we extended `std::error::Error` trait
+pub struct StoreTokenError(sqlx::Error);
+
+impl std::fmt::Display for StoreTokenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "A database error was encountered while \
+            trying to store a subscription token."
+        )
+    }
+}
+impl ResponseError for StoreTokenError {}
+
+impl std::error::Error for StoreTokenError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        // THer compiler transparently casts `sqlx::Error` into a `&dyn Error`
+        Some(&self.0)
+    }
+}
+
+impl std::fmt::Debug for StoreTokenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        error_chain_fmt(self, f)
+    }
+}
+
+// Iterates over the whole chain of errors that let to
+//  the failure we are trying to print
+fn error_chain_fmt(
+    e: &impl std::error::Error,
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    writeln!(f, "{}\n", e)?;
+    let mut current = e.source();
+    while let Some(cause) = current {
+        writeln!(f, "Caused by: \n\t{}", cause)?;
+        current = cause.source();
+    }
+    Ok(())
+}
+
 #[tracing::instrument(
     name = "Store subscription token in the database",
     skip(subscription_token, transaction)
@@ -205,7 +258,7 @@ pub async fn store_token(
     transaction: &mut Transaction<'_, Postgres>,
     subscriber_id: Uuid,
     subscription_token: &str,
-) -> Result<(), sqlx::Error> {
+) -> Result<(), StoreTokenError> {
     sqlx::query!(
         r#"INSERT INTO subscription_tokens (subscription_token, subscriber_id)
         VALUES ($1, $2)"#,
@@ -216,7 +269,8 @@ pub async fn store_token(
     .await
     .map_err(|e| {
         tracing::error!("Failed to execute query {:?}", e);
-        e
+        // we return the wrapped error instead of a plain error
+        StoreTokenError(e)
     })?;
     Ok(())
 }
