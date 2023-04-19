@@ -61,3 +61,9 @@ then launch with
 ```
 docker run -p 8000:8000 zero2prod
 ```
+
+## Migrations
+
+- To create new table/column/etc in DB create migration with: `sqlx migrate add create_users_table.sql`.
+- Add SQL to created file under `migrations` folder.
+- the run `SKIP_DOCKER=true ./scripts/init_db.sh`.

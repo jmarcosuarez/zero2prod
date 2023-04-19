@@ -49,6 +49,20 @@ impl TestApp {
             .await
             .expect("Failed to execute request.")
     }
+
+    pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
+        let (username, password) = self.test_user().await;
+        reqwest::Client::new()
+            .post(&format!("{}/newsletters", &self.address))
+            // Random credentials
+            // `reqwest` does all the encoding/formatting heavy-lifting for us.
+            .basic_auth(username, Some(password))
+            .json(&body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
     // Extract the confirmation links embedded in the request to the email API
     pub fn get_confirmation_links(&self, email_request: &wiremock::Request) -> ConfirmationLinks {
         let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
@@ -77,13 +91,13 @@ impl TestApp {
         ConfirmationLinks { html, plain_text }
     }
 
-    pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
-        reqwest::Client::new()
-            .post(&format!("{}/newsletters", &self.address))
-            .json(&body)
-            .send()
+    pub async fn test_user(&self) -> (String, String) {
+        let row = sqlx::query!("SELECT username, password FROM users LIMIT 1",)
+            .fetch_one(&self.db_pool)
             .await
-            .expect("Failed to execute request.")
+            .expect("Failed to create test users.");
+
+        (row.username, row.password)
     }
 }
 
@@ -123,12 +137,27 @@ pub async fn spawn_app() -> TestApp {
     // but we have no use for it here, hence the non-binding let
     let _ = tokio::spawn(application.run_until_stopped());
 
-    TestApp {
+    let test_app = TestApp {
         address,
         port: application_port,
         db_pool: get_connection_pool(&configuration.database),
         email_server,
-    }
+    };
+    add_test_user(&test_app.db_pool).await;
+    test_app
+}
+
+async fn add_test_user(pool: &PgPool) {
+    sqlx::query!(
+        "INSERT INTO users (user_id, username, password)
+        VALUES ($1,$2,$3)",
+        Uuid::new_v4(),
+        Uuid::new_v4().to_string(),
+        Uuid::new_v4().to_string(),
+    )
+    .execute(pool)
+    .await
+    .expect("Failed to create test users.");
 }
 
 // Test isolation

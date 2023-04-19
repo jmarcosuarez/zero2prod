@@ -41,6 +41,7 @@ reqwest = { version = "0.11.16", features = ["json", "rustls-tls"] }
 rand = { version = "0.8.5", features=["std_rng"] }
 thiserror = "1.0.40"
 anyhow = "1.0.70"
+base64 = "0.21.0"
 
 [dev-dependencies]
 claims = "0.7.1"
