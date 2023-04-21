@@ -1,3 +1,5 @@
+use argon2::password_hash::SaltString;
+use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version};
 use once_cell::sync::Lazy;
 use sqlx::{migrate, Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
@@ -6,6 +8,44 @@ use zero2prod::configuration::{get_configuration, DatabaseSettings};
 use zero2prod::startup::{get_connection_pool, Application};
 use zero2prod::telemetry::{get_subscriber, init_subscriber};
 
+pub struct TestUser {
+    pub user_id: Uuid,
+    pub username: String,
+    pub password: String,
+}
+
+impl TestUser {
+    pub fn generate() -> Self {
+        Self {
+            user_id: Uuid::new_v4(),
+            username: Uuid::new_v4().to_string(),
+            password: Uuid::new_v4().to_string(),
+        }
+    }
+
+    async fn store(&self, pool: &PgPool) {
+        let salt = SaltString::generate(&mut rand::thread_rng());
+        // Match parameters of the default password (See newsletter::validate_credentials())
+        let password_hash = Argon2::new(
+            Algorithm::Argon2id,
+            Version::V0x13,
+            Params::new(15000, 2, 1, None).unwrap(),
+        )
+        .hash_password(self.password.as_bytes(), &salt)
+        .unwrap()
+        .to_string();
+        sqlx::query!(
+            "INSERT INTO users (user_id, username, password_hash)
+            VALUES ($1,$2, $3)",
+            self.user_id,
+            self.username,
+            password_hash,
+        )
+        .execute(pool)
+        .await
+        .expect("Failed to store test user.");
+    }
+}
 // Ensure the `tracing` stack is only initialized once using `once_cell`
 //
 // When you want to see all the logs coming out of a certain test case to debug you can use
@@ -32,6 +72,7 @@ pub struct TestApp {
     pub address: String,
     pub db_pool: PgPool,
     pub email_server: MockServer,
+    pub test_user: TestUser,
 }
 // Confirmation links embedded in the request to the email API.
 pub struct ConfirmationLinks {
@@ -51,12 +92,11 @@ impl TestApp {
     }
 
     pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
-        let (username, password) = self.test_user().await;
         reqwest::Client::new()
             .post(&format!("{}/newsletters", &self.address))
             // Random credentials
             // `reqwest` does all the encoding/formatting heavy-lifting for us.
-            .basic_auth(username, Some(password))
+            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
             .json(&body)
             .send()
             .await
@@ -89,15 +129,6 @@ impl TestApp {
         let plain_text = get_link(body["TextBody"].as_str().unwrap());
 
         ConfirmationLinks { html, plain_text }
-    }
-
-    pub async fn test_user(&self) -> (String, String) {
-        let row = sqlx::query!("SELECT username, password FROM users LIMIT 1",)
-            .fetch_one(&self.db_pool)
-            .await
-            .expect("Failed to create test users.");
-
-        (row.username, row.password)
     }
 }
 
@@ -142,22 +173,10 @@ pub async fn spawn_app() -> TestApp {
         port: application_port,
         db_pool: get_connection_pool(&configuration.database),
         email_server,
+        test_user: TestUser::generate(),
     };
-    add_test_user(&test_app.db_pool).await;
+    test_app.test_user.store(&test_app.db_pool).await;
     test_app
-}
-
-async fn add_test_user(pool: &PgPool) {
-    sqlx::query!(
-        "INSERT INTO users (user_id, username, password)
-        VALUES ($1,$2,$3)",
-        Uuid::new_v4(),
-        Uuid::new_v4().to_string(),
-        Uuid::new_v4().to_string(),
-    )
-    .execute(pool)
-    .await
-    .expect("Failed to create test users.");
 }
 
 // Test isolation
