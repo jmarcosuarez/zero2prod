@@ -33,6 +33,8 @@ pub struct ApplicationSettings {
     // The domain and protocol are going to change according to environment
     // it will be http://127.0.0.1 for our tests and a proper DNS record with HTTPS for prod
     pub base_url: String,
+    // Use to verify response to avoid XSS attacks (when API redirects and injects error data to URL)
+    pub hmac_secret: Secret<String>,
 }
 
 #[derive(serde::Deserialize, Clone)]
