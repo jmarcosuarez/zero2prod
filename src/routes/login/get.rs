@@ -1,57 +1,25 @@
-use crate::startup::HmacSecret;
-use actix_web::{http::header::ContentType, web, HttpResponse};
-use hmac::{Hmac, Mac};
-use secrecy::ExposeSecret;
+use actix_web::{http::header::ContentType, HttpResponse};
+use actix_web_flash_messages::{IncomingFlashMessages, Level};
+use std::fmt::Write;
 
-// To make illegal state impossible we make all fields required (have no Option)
-// and instead make the query param no required (Option<web::Query<QueryParams>>)
-#[derive(serde::Deserialize)]
-pub struct QueryParams {
-    error: String,
-    tag: String,
-}
+pub async fn login_form(flash_messages: IncomingFlashMessages) -> HttpResponse {
+    let mut error_html = String::new();
 
-// We verify queryParams
-// Returns error string if the message authentication code matches our
-// expectations, an error otherwise.
-impl QueryParams {
-    fn verify(self, secret: &HmacSecret) -> Result<String, anyhow::Error> {
-        let tag = hex::decode(self.tag)?;
-        let query_string = format!("error={}", urlencoding::Encoded::new(&self.error));
-
-        let mut mac =
-            Hmac::<sha2::Sha256>::new_from_slice(secret.0.expose_secret().as_bytes()).unwrap();
-        mac.update(query_string.as_bytes());
-        mac.verify_slice(&tag)?;
-
-        Ok(self.error)
+    // Accommodates multiple flash messages. No need to deal with the cookie API, neither to retrieve incoming
+    // flash messages nor to make sure they are erased after having been read. The validity of out cookie signature is
+    // verified as well, before the request handler is invoked.f
+    for m in flash_messages.iter().filter(|m| m.level() == Level::Error) {
+        writeln!(error_html, "<p><i>{}</p></i>", m.content()).unwrap();
     }
-}
-
-pub async fn login_form(
-    query: Option<web::Query<QueryParams>>,
-    secret: web::Data<HmacSecret>,
-) -> HttpResponse {
-    let error_html = match query {
-        None => "".into(),
-        Some(query) => match query.0.verify(&secret) {
-            Ok(error) => {
-                format!("<p><i>{}</i></p>", htmlescape::encode_minimal(&error))
-            }
-            // Choose to log message instead of returning 400!
-            Err(e) => {
-                tracing::warn!(
-                    error.message = %e,
-                    error.cause_chain = ?e,
-                    "Failed to verify parameters using the HMAC tag"
-                );
-                "".into()
-            }
-        },
-    };
 
     HttpResponse::Ok()
         .content_type(ContentType::html())
+        // We set flash cookie on the response to `Max-Age=0` to remove the flash messages stored in the user's browser.
+        // .cookie(
+        //     Cookie::build("_flash", "")
+        //         .max_age(actix_web::cookie::time::Duration::ZERO)
+        //         .finish(),
+        // ) // this is done more clearly below
         .body(format!(
             r#"<!DOCTYPE html>
             <html lang="en">
@@ -81,4 +49,11 @@ pub async fn login_form(
             </body>
             </html>"#,
         ))
+    // No more cookie removal - using FlashMessage instead
+    // Use `add_removal_cookie()` to clear the flash cookie
+    // response
+    //     .add_removal_cookie(&Cookie::new("_flash", ""))
+    //     .unwrap();
+
+    // response
 }

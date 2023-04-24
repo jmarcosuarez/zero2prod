@@ -1,12 +1,11 @@
 use crate::authentication::AuthError;
 use crate::authentication::{validate_credentials, Credentials};
 use crate::routes::error_chain_fmt;
-use crate::startup::HmacSecret;
 use actix_web::error::InternalError;
 use actix_web::http::header::LOCATION;
 use actix_web::{web, HttpResponse};
-use hmac::{Hmac, Mac};
-use secrecy::{ExposeSecret, Secret};
+use actix_web_flash_messages::FlashMessage;
+use secrecy::Secret;
 use sqlx::PgPool;
 
 #[derive(serde::Deserialize)]
@@ -14,19 +13,14 @@ pub struct FormData {
     username: String,
     password: Secret<String>,
 }
-// To verify credentials
-// form data is submitted to the backend using the `application/x-www-form-urlencoded` content type.
-// We then can parse it out of the incoming request using `actix_web`'s Form extractor and
-// a struct that implements `serde::Deserialize`
+
 #[tracing::instrument(
-    skip(form, pool, secret),
+    skip(form, pool),
     fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
 )]
 pub async fn login(
     form: web::Form<FormData>,
     pool: web::Data<PgPool>,
-    // Injecting secret - helps verify send query params send by out API have not been altered  (XSS attack)
-    secret: web::Data<HmacSecret>,
     // `actix_web::error::InternalError` can be returned as an error from a request handler
     // Otherwise we would have missed propagating upstream the error context
 ) -> Result<HttpResponse, InternalError<LoginError>> {
@@ -47,21 +41,13 @@ pub async fn login(
                 AuthError::InvalidCredentials(_) => LoginError::AuthError(e.into()),
                 AuthError::UnexpectedError(_) => LoginError::UnexpectedError(e.into()),
             };
-            let query_string = format!("error={}", urlencoding::Encoded::new(e.to_string()));
-            let hmac_tag = {
-                let mut mac =
-                    Hmac::<sha2::Sha256>::new_from_slice(secret.0.expose_secret().as_bytes())
-                        .unwrap();
-                mac.update(query_string.as_bytes());
-                mac.finalize().into_bytes()
-            };
-
+            // Use FlashMessage to set flash cookie here instead that setting cookies below
+            FlashMessage::error(e.to_string()).send();
             // Using redirect - if auth succeeds, we navigate back to our home page
             let response = HttpResponse::SeeOther()
-                .insert_header((
-                    LOCATION,
-                    format!("/login?{}&tag={:x}", query_string, hmac_tag),
-                ))
+                .insert_header((LOCATION, "/login"))
+                // .insert_header(("Set-Cookie", format!("_flash={e}"))) // there's a dedicated API for cookies just line below
+                // .cookie(Cookie::new("_flash", e.to_string())) // we know use FlashMessagesFramework to care about cookies
                 .finish();
             Err(InternalError::from_response(e, response))
         }
