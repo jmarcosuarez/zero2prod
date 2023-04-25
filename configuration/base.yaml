@@ -18,3 +18,5 @@ email_client:
   # Given it is a sensitive secret!
   authorization_token: "my-secret-token"
   timeout_milliseconds: 10000
+# 6379 is Redis' default port
+redis_uri: "redis://127.0.0.1:6379"
