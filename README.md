@@ -27,6 +27,8 @@ From root run
 
 ```
 ./scripts/init_db.sh
+
+./scripts/init_redis.sh
 ```
 
 then run
