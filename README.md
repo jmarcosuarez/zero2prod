@@ -26,9 +26,13 @@ Once they click on the link, a browser tab will open and a new GET request will 
 From root run
 
 ```
-./scripts/init_db.sh
-
 ./scripts/init_redis.sh
+```
+
+then run:
+
+```
+./scripts/init_db.sh
 ```
 
 then run
