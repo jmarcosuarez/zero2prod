@@ -20,6 +20,7 @@ impl TestUser {
             user_id: Uuid::new_v4(),
             username: Uuid::new_v4().to_string(),
             password: Uuid::new_v4().to_string(),
+            // password: "everythinghastostartsomewhere".into(),
         }
     }
 
@@ -34,6 +35,9 @@ impl TestUser {
         .hash_password(self.password.as_bytes(), &salt)
         .unwrap()
         .to_string();
+        // `dbg! is a macro that prints ans returns the value
+        // of an expression for quick and dirty debugging
+        // dbg!(&password_hash);
         sqlx::query!(
             "INSERT INTO users (user_id, username, password_hash)
             VALUES ($1,$2, $3)",

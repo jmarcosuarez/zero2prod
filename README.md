@@ -14,7 +14,7 @@ Subscription flow with proper confirmation email:
 4. Send an email to the new subscriber containing a link structured as `https://<api.domain>/subscriptions/confirm?token=<subscription_token>`.
 5. Return a `200 OK`.
 
-Once they click on the link, a browser tab will open and a new GET request will be fired to out GET `/subscriptions/confirm` endpoint. Our request handlerr will:
+Once they click on the link, a browser tab will open and a new GET request will be fired to out GET `/subscriptions/confirm` endpoint. Our request handler will:
 
 1. Retrieve `subscription_token` from query parameters.
 2. Retrieve the `subscriber_id` associated with `subscription_token` from the `subscription_tokens` table.
@@ -26,13 +26,13 @@ Once they click on the link, a browser tab will open and a new GET request will 
 From root run
 
 ```
-./scripts/init_redis.sh
+./scripts/init_db.sh
 ```
 
 then run:
 
 ```
-./scripts/init_db.sh
+./scripts/init_redis.sh
 ```
 
 then run
@@ -71,5 +71,13 @@ docker run -p 8000:8000 zero2prod
 ## Migrations
 
 - To create new table/column/etc in DB create migration with: `sqlx migrate add create_users_table.sql`.
-- Add SQL to created file under `migrations` folder.
-- the run `SKIP_DOCKER=true ./scripts/init_db.sh`.
+- Add SQL to the created file under `migrations` folder.
+- then run `SKIP_DOCKER=true ./scripts/init_db.sh`.
+- then run `cargo sqlx prepare` just so tests can pass on CI.
+
+## Credentials
+
+To log into the user dashboard you can use:
+
+- username: _admin_
+- password: _everythinghastostartsomewhere_
