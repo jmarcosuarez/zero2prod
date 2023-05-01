@@ -20,6 +20,12 @@ impl TypedSession {
     pub fn get_user_id(&self) -> Result<Option<Uuid>, SessionGetError> {
         self.0.get(Self::USER_ID_KEY)
     }
+
+    // Dedicated method `purge` to delete the session, remove state from the storage
+    // backend and unset the client-side cookie.
+    pub fn log_out(self) {
+        self.0.purge()
+    }
 }
 
 impl FromRequest for TypedSession {

@@ -1,5 +1,5 @@
 use actix_web::{http::header::ContentType, HttpResponse};
-use actix_web_flash_messages::{IncomingFlashMessages, Level};
+use actix_web_flash_messages::IncomingFlashMessages;
 use std::fmt::Write;
 
 pub async fn login_form(flash_messages: IncomingFlashMessages) -> HttpResponse {
@@ -7,8 +7,8 @@ pub async fn login_form(flash_messages: IncomingFlashMessages) -> HttpResponse {
 
     // Accommodates multiple flash messages. No need to deal with the cookie API, neither to retrieve incoming
     // flash messages nor to make sure they are erased after having been read. The validity of out cookie signature is
-    // verified as well, before the request handler is invoked.f
-    for m in flash_messages.iter().filter(|m| m.level() == Level::Error) {
+    // verified as well, before the request handler is invoked.
+    for m in flash_messages.iter() {
         writeln!(error_html, "<p><i>{}</p></i>", m.content()).unwrap();
     }
 

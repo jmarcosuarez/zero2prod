@@ -39,7 +39,7 @@ pub async fn change_password(
     let username = get_username(user_id, &pool).await.map_err(e500)?;
 
     // VALIDATE CURRENT PASSWORD!
-    // We can now pass psswd and username to validate credentials
+    // We can now pass password and username to validate credentials
     // if the validation fails we need to take different paths depending on the returned error
     let credentials = Credentials {
         username,
@@ -55,5 +55,9 @@ pub async fn change_password(
         };
     }
 
-    todo!()
+    crate::authentication::change_password(user_id, form.0.new_password, &pool)
+        .await
+        .map_err(e500)?;
+    FlashMessage::error("Your password has been changed.").send();
+    Ok(see_other("/admin/password"))
 }
