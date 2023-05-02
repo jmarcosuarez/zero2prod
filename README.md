@@ -80,4 +80,4 @@ docker run -p 8000:8000 zero2prod
 To log into the user dashboard you can use:
 
 - username: _admin_
-- password: _everythinghastostartsomewhere_
+- password: everythinghastostartsomewhere

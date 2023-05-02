@@ -11,13 +11,12 @@
   "workbench.colorCustomizations": {
     // Name of the theme you are currently using
     "[Default Dark+]": {
-    "editorInlayHint.foreground": "#868686f0",
-    "editorInlayHint.background": "#18181800",
-    // Overrides for specific kinds of inlay hints
-    "editorInlayHint.typeForeground": "#666866f0",
-    "editorInlayHint.parameterForeground": "#5c5e5cf0",
+      "editorInlayHint.foreground": "#868686f0",
+      "editorInlayHint.background": "#18181800",
+      // Overrides for specific kinds of inlay hints
+      "editorInlayHint.typeForeground": "#666866f0",
+      "editorInlayHint.parameterForeground": "#5c5e5cf0"
     }
   },
-
+  "cSpell.words": ["actix"]
 }
-    
